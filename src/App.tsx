@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import './App.css'
 import Settings from './Settings'
 import Editor from './Editor'
@@ -11,6 +12,7 @@ interface EditorData {
 }
 
 function App() {
+    const { t } = useTranslation()
     const [mode, setMode] = useState<'overlay' | 'settings' | 'editor'>('overlay')
     const [editorData, setEditorData] = useState<EditorData | null>(null)
     const [imageSrc, setImageSrc] = useState<string | null>(null)
@@ -158,7 +160,7 @@ function App() {
                     src={imageSrc}
                     className="absolute top-0 left-0 w-full h-full pointer-events-none"
                     style={{ objectFit: 'fill' }}
-                    alt="Screen"
+                    alt={t('overlay.screenAlt')}
                     draggable={false}
                 />
             )}
@@ -224,12 +226,12 @@ function App() {
                 <div className="absolute bottom-10 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-full flex items-center gap-6 pointer-events-none animate-in">
                     <span className="flex items-center gap-2 text-xs font-medium text-slate-300">
                         <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono text-[10px]">ESC</kbd>
-                        Cancel
+                        {t('overlay.cancel')}
                     </span>
                     <div className="w-px h-4 bg-white/10" />
                     <span className="flex items-center gap-2 text-xs font-medium text-slate-300">
                         <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono text-[10px]">M</kbd>
-                        Magnifier
+                        {t('overlay.magnifier')}
                     </span>
                 </div>
             )}

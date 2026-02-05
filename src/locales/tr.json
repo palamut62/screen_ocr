@@ -1,6 +1,6 @@
 {
     "settings": {
-        "title": "ScreenOCR",
+        "title": "Screen",
         "tabs": {
             "ocr": "OCR & Çeviri",
             "general": "Genel",
@@ -65,5 +65,10 @@
         "system": "Sistem (Otomatik)",
         "en": "İngilizce",
         "tr": "Türkçe"
+    },
+    "overlay": {
+        "cancel": "İptal",
+        "magnifier": "Büyüteç",
+        "screenAlt": "Ekran"
     }
 }

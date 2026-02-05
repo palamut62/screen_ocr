@@ -1,6 +1,6 @@
 {
     "settings": {
-        "title": "ScreenOCR",
+        "title": "Screen",
         "tabs": {
             "ocr": "OCR & Translate",
             "general": "General",
@@ -65,5 +65,10 @@
         "system": "System (Auto)",
         "en": "English",
         "tr": "Turkish"
+    },
+    "overlay": {
+        "cancel": "Cancel",
+        "magnifier": "Magnifier",
+        "screenAlt": "Screen"
     }
 }

@@ -396,7 +396,18 @@ const trayTranslations: Record<string, Record<string, string>> = {
         'clearHistory': 'Clear History',
         'settings': 'Settings',
         'quit': 'Quit',
-        'copied': 'Copied'
+        'copied': 'Copied',
+        'captureFailed': 'Capture Failed',
+        'captureFailedBody': 'Could not capture screen.',
+        'error': 'Error',
+        'notFound': 'Not Found',
+        'qrNotFound': 'QR code or barcode not found.',
+        'tableNotFound': 'Table structure not detected.',
+        'handwritingNotFound': 'Handwriting could not be read.',
+        'ocrNotFound': 'No readable text in the selected area.',
+        'translationTitle': 'Translation',
+        'saved': 'Saved',
+        'translated': 'Translated'
     },
     'tr': {
         'capture': 'Metin Yakala',
@@ -407,7 +418,18 @@ const trayTranslations: Record<string, Record<string, string>> = {
         'clearHistory': 'Geçmişi Temizle',
         'settings': 'Ayarlar',
         'quit': 'Çıkış',
-        'copied': 'Kopyalandı'
+        'copied': 'Kopyalandı',
+        'captureFailed': 'Yakalama Başarısız',
+        'captureFailedBody': 'Ekran görüntüsü alınamadı.',
+        'error': 'Hata',
+        'notFound': 'Bulunamadı',
+        'qrNotFound': 'QR kod veya barkod bulunamadı.',
+        'tableNotFound': 'Tablo yapısı algılanamadı.',
+        'handwritingNotFound': 'El yazısı okunamadı.',
+        'ocrNotFound': 'Seçili alanda okunabilir metin bulunamadı.',
+        'translationTitle': 'Çeviri',
+        'saved': 'Kaydedildi',
+        'translated': 'Çevrildi'
     }
 }
 
@@ -591,11 +613,11 @@ async function startCapture() {
             win.webContents.send('show-overlay', dataUrl)
             console.log('Window shown, IPC sent')
         } else {
-            showNotification('Capture Failed', 'Could not capture screen.')
+            showNotification(getTrayText('captureFailed'), getTrayText('captureFailedBody'))
         }
     } catch (err) {
         console.error("Capture failed:", err)
-        showNotification('Error', 'Screen capture failed')
+        showNotification(getTrayText('error'), getTrayText('captureFailed'))
     }
 }
 
@@ -707,7 +729,8 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
                 if (translated) {
                     translatedText = translated
                     // Hem orijinal hem çeviri kopyala
-                    finalText = `${text}\n\n--- Translation (${translateTarget.toUpperCase()}) ---\n${translated}`
+                    const transTitle = getTrayText('translationTitle')
+                    finalText = `${text}\n\n--- ${transTitle} (${translateTarget.toUpperCase()}) ---\n${translated}`
                 }
             }
 
@@ -729,19 +752,19 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
                 clipboard.writeText(finalText)
                 addToHistory(finalText)
                 saveToFile(finalText, captureMode)
-                const saveInfo = autoSaveEnabled ? ' (saved)' : ''
-                const modeLabel = captureMode === 'table' ? 'Table ' : ''
-                const translateInfo = translatedText ? ' +translated' : ''
-                showNotification(`${modeLabel}Copied!${saveInfo}${translateInfo}`, text.length > 80 ? text.substring(0, 80) + '...' : text)
+                const saveInfo = autoSaveEnabled ? ` (${getTrayText('saved').toLowerCase()})` : ''
+                const modeLabel = captureMode === 'table' ? `${getTrayText('table')} ` : ''
+                const translateInfo = translatedText ? ` +${getTrayText('translated').toLowerCase()}` : ''
+                showNotification(`${modeLabel}${getTrayText('copied')}!${saveInfo}${translateInfo}`, text.length > 80 ? text.substring(0, 80) + '...' : text)
             }
         } else {
             const messages: Record<string, string> = {
-                'qr': 'QR code or barcode not found.',
-                'table': 'Table structure not detected.',
-                'handwriting': 'Handwriting could not be read.',
-                'ocr': 'No readable text in the selected area.'
+                'qr': getTrayText('qrNotFound'),
+                'table': getTrayText('tableNotFound'),
+                'handwriting': getTrayText('handwritingNotFound'),
+                'ocr': getTrayText('ocrNotFound')
             }
-            showNotification('Not Found', messages[captureMode])
+            showNotification(getTrayText('notFound'), messages[captureMode])
         }
 
         // Modu sıfırla
@@ -749,7 +772,7 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
 
     } catch (error) {
         console.error('OCR Error:', error)
-        showNotification('Error', (error as Error).message)
+        showNotification(getTrayText('error'), (error as Error).message)
     }
     // Tray'da çalışmaya devam et (app.quit() yok)
 })
