@@ -1,0 +1,69 @@
+{
+    "settings": {
+        "title": "ScreenOCR",
+        "tabs": {
+            "ocr": "OCR & Translate",
+            "general": "General",
+            "shortcuts": "Shortcuts"
+        },
+        "sections": {
+            "translation": "Translation Settings",
+            "application": "Application",
+            "system": "System",
+            "captureShortcut": "Capture Shortcut",
+            "otherShortcuts": "Other Shortcuts"
+        },
+        "labels": {
+            "autoDetect": "Auto Language Detection",
+            "autoDetectSub": "Uses Tesseract OSD (Slower)",
+            "autoTranslate": "Auto Translate",
+            "autoTranslateSub": "Google Translate Integration",
+            "targetLanguage": "Target Language",
+            "editWindow": "Editing Window",
+            "editWindowSub": "Edit & review before copying",
+            "autoSave": "Auto Save",
+            "autoSaveSub": "Save results to file",
+            "saveLocation": "Save Location",
+            "runAtStartup": "Run at Startup",
+            "runAtStartupSub": "Launch when system starts",
+            "interfaceLanguage": "Interface Language"
+        },
+        "actions": {
+            "open": "OPEN",
+            "change": "CHANGE",
+            "save": "SAVE",
+            "saved": "SAVED",
+            "waiting": "WAITING FOR CHANGES",
+            "notSelected": "Not Selected"
+        },
+        "shortcuts": {
+            "readQr": "Read QR / Barcode",
+            "captureTable": "Capture Table",
+            "readHandwriting": "Read Handwriting",
+            "magnifier": "Magnifier",
+            "exit": "Exit"
+        }
+    },
+    "editor": {
+        "title": "Edit Result",
+        "copy": "Copy",
+        "close": "Close",
+        "cancel": "Cancel",
+        "placeholder": "No text..."
+    },
+    "tray": {
+        "capture": "Capture Text",
+        "handwriting": "Handwriting",
+        "table": "Table",
+        "qr": "QR / Barcode",
+        "history": "History",
+        "clearHistory": "Clear History",
+        "settings": "Settings",
+        "quit": "Quit"
+    },
+    "languages": {
+        "system": "System (Auto)",
+        "en": "English",
+        "tr": "Turkish"
+    }
+}

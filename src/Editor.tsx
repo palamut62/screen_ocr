@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface EditorProps {
     text: string
@@ -9,6 +10,7 @@ interface EditorProps {
 }
 
 export default function Editor({ text, mode, theme, onCopy, onClose }: EditorProps) {
+    const { t } = useTranslation()
     const [editedText, setEditedText] = useState(text)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isDark = theme === 'dark'
@@ -36,7 +38,7 @@ export default function Editor({ text, mode, theme, onCopy, onClose }: EditorPro
             {/* Header */}
             <div className={`h-10 px-3 flex items-center justify-between no-drag ${isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
                 <span className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Metin Düzenleyici
+                    {t('editor.title')}
                 </span>
                 <button
                     onClick={onClose}
@@ -57,7 +59,7 @@ export default function Editor({ text, mode, theme, onCopy, onClose }: EditorPro
                     onChange={(e) => setEditedText(e.target.value)}
                     onKeyDown={handleKeyDown}
                     className={`w-full h-full p-4 text-sm resize-none focus:outline-none ${isDark ? 'bg-[#1a1a1a] text-gray-300' : 'bg-white text-gray-800'}`}
-                    placeholder="Metin yok..."
+                    placeholder={t('editor.placeholder')}
                     spellCheck={false}
                 />
             </div>
@@ -68,13 +70,13 @@ export default function Editor({ text, mode, theme, onCopy, onClose }: EditorPro
                     onClick={onClose}
                     className={`px-3 py-1.5 text-xs rounded ${isDark ? 'text-gray-400 hover:bg-white/10' : 'text-gray-500 hover:bg-gray-200'}`}
                 >
-                    İptal
+                    {t('editor.cancel')}
                 </button>
                 <button
                     onClick={handleCopy}
                     className={`px-4 py-1.5 text-xs rounded ${isDark ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                 >
-                    Kopyala
+                    {t('editor.copy')}
                 </button>
             </div>
         </div>

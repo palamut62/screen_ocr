@@ -1,0 +1,69 @@
+{
+    "settings": {
+        "title": "ScreenOCR",
+        "tabs": {
+            "ocr": "OCR & Çeviri",
+            "general": "Genel",
+            "shortcuts": "Kısayollar"
+        },
+        "sections": {
+            "translation": "Çeviri Ayarları",
+            "application": "Uygulama",
+            "system": "Sistem",
+            "captureShortcut": "Yakalama Kısayolu",
+            "otherShortcuts": "Diğer Kısayollar"
+        },
+        "labels": {
+            "autoDetect": "Otomatik Dil Algılama",
+            "autoDetectSub": "Tesseract OSD Kullanır (Yavaş)",
+            "autoTranslate": "Otomatik Çeviri",
+            "autoTranslateSub": "Google Çeviri Entegrasyonu",
+            "targetLanguage": "Hedef Dil",
+            "editWindow": "Düzenleme Penceresi",
+            "editWindowSub": "Kopyalamadan önce düzenle",
+            "autoSave": "Otomatik Kayıt",
+            "autoSaveSub": "Sonuçları dosyaya kaydet",
+            "saveLocation": "Kayıt Yeri",
+            "runAtStartup": "Başlangıçta Çalıştır",
+            "runAtStartupSub": "Sistem açıldığında başlat",
+            "interfaceLanguage": "Arayüz Dili"
+        },
+        "actions": {
+            "open": "AÇ",
+            "change": "DEĞİŞTİR",
+            "save": "KAYDET",
+            "saved": "KAYDEDİLDİ",
+            "waiting": "DEĞİŞİKLİK BEKLENİYOR",
+            "notSelected": "Seçilmedi"
+        },
+        "shortcuts": {
+            "readQr": "QR / Barkod Oku",
+            "captureTable": "Tablo Yakala",
+            "readHandwriting": "El Yazısı Oku",
+            "magnifier": "Büyüteç",
+            "exit": "Çıkış"
+        }
+    },
+    "editor": {
+        "title": "Sonucu Düzenle",
+        "copy": "Kopyala",
+        "close": "Kapat",
+        "cancel": "İptal",
+        "placeholder": "Metin yok..."
+    },
+    "tray": {
+        "capture": "Metin Yakala",
+        "handwriting": "El Yazısı",
+        "table": "Tablo",
+        "qr": "QR / Barkod",
+        "history": "Geçmiş",
+        "clearHistory": "Geçmişi Temizle",
+        "settings": "Ayarlar",
+        "quit": "Çıkış"
+    },
+    "languages": {
+        "system": "Sistem (Otomatik)",
+        "en": "İngilizce",
+        "tr": "Türkçe"
+    }
+}

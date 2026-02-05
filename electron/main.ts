@@ -23,6 +23,7 @@ const configFile = path.join(configDir, 'settings.json')
 
 interface AppSettings {
     language: string
+    uiLanguage: 'system' | 'en' | 'tr'
     shortcut: string
     autoSave: boolean
     saveDirectory: string
@@ -36,6 +37,7 @@ interface AppSettings {
 
 const defaultSettings: AppSettings = {
     language: 'eng+tur',
+    uiLanguage: 'system',
     shortcut: 'CommandOrControl+Shift+O',
     autoSave: false,
     saveDirectory: path.join(process.env.HOME || '', 'OCR-Sonuclari'),
@@ -69,6 +71,7 @@ function saveSettings() {
         }
         const settings: AppSettings = {
             language: currentLanguage,
+            uiLanguage: uiLanguage,
             shortcut: currentShortcut,
             autoSave: autoSaveEnabled,
             saveDirectory: saveDirectory,
@@ -102,6 +105,7 @@ const MAX_HISTORY = 10
 // Ayarları yükle
 const settings = loadSettings()
 let currentLanguage = settings.language
+let uiLanguage = settings.uiLanguage || 'system'
 let currentShortcut = settings.shortcut
 let captureMode: 'ocr' | 'qr' | 'table' | 'handwriting' = 'ocr'
 let autoSaveEnabled = settings.autoSave
@@ -381,16 +385,49 @@ function addToHistory(text: string) {
     updateTrayMenu() // Menüyü güncelle
 }
 
+// Basit çeviri haritası (Tray için)
+const trayTranslations: Record<string, Record<string, string>> = {
+    'en': {
+        'capture': 'Capture Text',
+        'handwriting': 'Handwriting',
+        'table': 'Table',
+        'qr': 'QR / Barcode',
+        'history': 'History',
+        'clearHistory': 'Clear History',
+        'settings': 'Settings',
+        'quit': 'Quit',
+        'copied': 'Copied'
+    },
+    'tr': {
+        'capture': 'Metin Yakala',
+        'handwriting': 'El Yazısı',
+        'table': 'Tablo',
+        'qr': 'QR / Barkod',
+        'history': 'Geçmiş',
+        'clearHistory': 'Geçmişi Temizle',
+        'settings': 'Ayarlar',
+        'quit': 'Çıkış',
+        'copied': 'Kopyalandı'
+    }
+}
+
+function getTrayText(key: string): string {
+    const lang = uiLanguage === 'system' ? app.getLocale().split('-')[0] : uiLanguage
+    // Desteklenmeyen diller için İngilizce
+    const targetLang = (lang === 'tr') ? 'tr' : 'en'
+    return trayTranslations[targetLang][key] || trayTranslations['en'][key]
+}
+
 function updateTrayMenu() {
     if (!tray) return
 
 
 
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
-        { label: 'Capture Text', click: () => setTimeout(startOCRCapture, 150) },
-        { label: 'Handwriting', click: () => setTimeout(startHandwritingCapture, 150) },
-        { label: 'Table', click: () => setTimeout(startTableCapture, 150) },
-        { label: 'QR / Barcode', click: () => setTimeout(startQRCapture, 150) },
+        { label: getTrayText('capture'), click: () => setTimeout(startOCRCapture, 150) },
+        { label: getTrayText('handwriting'), click: () => setTimeout(startHandwritingCapture, 150) },
+        { label: getTrayText('table'), click: () => setTimeout(startTableCapture, 150) },
+        { label: getTrayText('qr'), click: () => setTimeout(startQRCapture, 150) },
         { type: 'separator' },
     ]
 
@@ -401,13 +438,13 @@ function updateTrayMenu() {
             sublabel: new Date(item.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
             click: () => {
                 clipboard.writeText(item.text)
-                showNotification('Copied', item.preview)
+                showNotification(getTrayText('copied'), item.preview)
             }
         }))
 
         historySubmenu.push({ type: 'separator' })
         historySubmenu.push({
-            label: 'Clear History',
+            label: getTrayText('clearHistory'),
             click: () => {
                 ocrHistory.length = 0
                 updateTrayMenu()
@@ -415,14 +452,14 @@ function updateTrayMenu() {
         })
 
         menuTemplate.push({
-            label: `History (${ocrHistory.length})`,
+            label: `${getTrayText('history')} (${ocrHistory.length})`,
             submenu: historySubmenu
         })
     }
 
     menuTemplate.push({ type: 'separator' })
-    menuTemplate.push({ label: 'Settings', click: () => openSettings() })
-    menuTemplate.push({ label: 'Quit', click: () => app.quit() })
+    menuTemplate.push({ label: getTrayText('settings'), click: () => openSettings() })
+    menuTemplate.push({ label: getTrayText('quit'), click: () => app.quit() })
 
     tray.setContextMenu(Menu.buildFromTemplate(menuTemplate))
 }
@@ -749,6 +786,7 @@ function closeSettings() {
 ipcMain.handle('get-settings', () => {
     return {
         language: currentLanguage,
+        uiLanguage: uiLanguage,
         shortcut: currentShortcut,
         autoSave: autoSaveEnabled,
         saveDirectory: saveDirectory,
@@ -766,6 +804,11 @@ ipcMain.on('save-settings', (_event, newSettings) => {
     // Dil değişti mi?
     if (newSettings.language !== currentLanguage) {
         currentLanguage = newSettings.language
+    }
+
+    // Arayüz dili değişti mi?
+    if (newSettings.uiLanguage !== uiLanguage) {
+        uiLanguage = newSettings.uiLanguage
     }
 
     // Kısayol değişti mi?

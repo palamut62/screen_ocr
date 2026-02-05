@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface SettingsData {
     language: string
+    uiLanguage: 'system' | 'en' | 'tr'
     shortcut: string
     autoSave: boolean
     saveDirectory: string
@@ -62,8 +64,10 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 )
 
 export default function Settings() {
+    const { t, i18n } = useTranslation()
     const [settings, setSettings] = useState<SettingsData>({
         language: 'eng+tur',
+        uiLanguage: 'system',
         shortcut: 'CommandOrControl+Shift+O',
         autoSave: false,
         saveDirectory: '',
@@ -78,6 +82,15 @@ export default function Settings() {
     const [activeTab, setActiveTab] = useState<'ocr' | 'general' | 'shortcuts'>('ocr')
 
     const isDark = settings.theme === 'dark'
+
+    useEffect(() => {
+        // Change language when settings change
+        if (settings.uiLanguage === 'system') {
+            i18n.changeLanguage(navigator.language)
+        } else {
+            i18n.changeLanguage(settings.uiLanguage)
+        }
+    }, [settings.uiLanguage, i18n])
 
     useEffect(() => {
         window.ipcRenderer.invoke('get-settings').then((data: SettingsData) => {
@@ -110,7 +123,7 @@ export default function Settings() {
             <div className={`h-12 px-6 flex items-center justify-between border-b backdrop-blur-xl z-20 shrink-0 ${isDark ? 'border-[#2b2b2b] bg-[#252526]' : 'border-slate-200 bg-slate-50'}`}>
                 <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"></div>
-                    <span className={`text-xl font-bold tracking-tight ${isDark ? 'text-white/90' : 'text-slate-900'}`}>Screen<span className="text-indigo-400 font-normal opacity-80">OCR</span></span>
+                    <span className={`text-xl font-bold tracking-tight ${isDark ? 'text-white/90' : 'text-slate-900'}`}>{t('settings.title')}<span className="text-indigo-400 font-normal opacity-80">OCR</span></span>
                 </div>
                 <button
                     onClick={handleClose}
@@ -135,7 +148,7 @@ export default function Settings() {
                                     : 'text-slate-500 hover:text-slate-400'
                                     }`}
                             >
-                                {tab === 'ocr' ? 'OCR & Translate' : tab === 'general' ? 'General' : 'Shortcuts'}
+                                {t(`settings.tabs.${tab}`)}
                                 {activeTab === tab && (
                                     <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
                                 )}
@@ -163,18 +176,18 @@ export default function Settings() {
                             </div>
 
                             <Toggle
-                                label="Auto Language Detection"
-                                subLabel="Uses Tesseract OSD (Slower)"
+                                label={t('settings.labels.autoDetect')}
+                                subLabel={t('settings.labels.autoDetectSub')}
                                 checked={settings.autoDetectLanguage}
                                 onChange={(c) => setSettings({ ...settings, autoDetectLanguage: c })}
                                 isDark={isDark}
                             />
 
-                            <SectionTitle>Translation Settings</SectionTitle>
+                            <SectionTitle>{t('settings.sections.translation')}</SectionTitle>
 
                             <Toggle
-                                label="Auto Translate"
-                                subLabel="Google Translate Integration"
+                                label={t('settings.labels.autoTranslate')}
+                                subLabel={t('settings.labels.autoTranslateSub')}
                                 checked={settings.translateEnabled}
                                 onChange={(c) => setSettings({ ...settings, translateEnabled: c })}
                                 isDark={isDark}
@@ -182,7 +195,7 @@ export default function Settings() {
 
                             {settings.translateEnabled && (
                                 <div className="mt-4 mb-6 pl-4 border-l-2 border-indigo-500/30 animate-in">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Target Language</p>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">{t('settings.labels.targetLanguage')}</p>
                                     <div className="flex flex-wrap gap-2">
                                         {translateLanguages.map(lang => (
                                             <button
@@ -220,19 +233,43 @@ export default function Settings() {
                                 </button>
                             </div>
 
-                            <SectionTitle>Application</SectionTitle>
+                            <SectionTitle>{t('settings.sections.application')}</SectionTitle>
+
+                            {/* Interface Language Selector */}
+                            <div className={`mt-2 mb-4 p-4 rounded-lg border flex items-center justify-between group transition-all ${isDark ? 'bg-white/[0.03] border-white/5 hover:bg-white/[0.05]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                                <div className="flex-1 truncate mr-4">
+                                    <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">{t('settings.labels.interfaceLanguage')}</div>
+                                    <div className={`text-xs font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                        {t(`languages.${settings.uiLanguage}`)}
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    {['system', 'en', 'tr'].map(lang => (
+                                        <button
+                                            key={lang}
+                                            onClick={() => setSettings({ ...settings, uiLanguage: lang as any })}
+                                            className={`px-3 py-2 rounded text-[10px] font-bold transition-colors ${settings.uiLanguage === lang
+                                                ? 'bg-indigo-500 text-white'
+                                                : (isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-600')
+                                                }`}
+                                        >
+                                            {lang === 'system' ? 'AUTO' : lang.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
 
                             <Toggle
-                                label="Editing Window"
-                                subLabel="Edit & review before copying"
+                                label={t('settings.labels.editWindow')}
+                                subLabel={t('settings.labels.editWindowSub')}
                                 checked={settings.showEditWindow}
                                 onChange={(c) => setSettings({ ...settings, showEditWindow: c })}
                                 isDark={isDark}
                             />
 
                             <Toggle
-                                label="Auto Save"
-                                subLabel="Save results to file"
+                                label={t('settings.labels.autoSave')}
+                                subLabel={t('settings.labels.autoSaveSub')}
                                 checked={settings.autoSave}
                                 onChange={(c) => setSettings({ ...settings, autoSave: c })}
                                 isDark={isDark}
@@ -241,20 +278,20 @@ export default function Settings() {
                             {settings.autoSave && (
                                 <div className={`mt-2 mb-4 p-4 rounded-lg border flex items-center justify-between group transition-all ${isDark ? 'bg-white/[0.03] border-white/5 hover:bg-white/[0.05]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
                                     <div className="flex-1 truncate mr-4">
-                                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">Save Location</div>
-                                        <div className={`text-xs font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{settings.saveDirectory || "Not Selected"}</div>
+                                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">{t('settings.labels.saveLocation')}</div>
+                                        <div className={`text-xs font-mono truncate ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{settings.saveDirectory || t('settings.actions.notSelected')}</div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={handleOpenDirectory} className={`px-3 py-2 rounded text-[10px] font-bold transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-600'}`}>OPEN</button>
-                                        <button onClick={handleChooseDirectory} className={`px-3 py-2 rounded text-[10px] font-bold transition-colors ${isDark ? 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300' : 'bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-600'}`}>CHANGE</button>
+                                        <button onClick={handleOpenDirectory} className={`px-3 py-2 rounded text-[10px] font-bold transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{t('settings.actions.open')}</button>
+                                        <button onClick={handleChooseDirectory} className={`px-3 py-2 rounded text-[10px] font-bold transition-colors ${isDark ? 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300' : 'bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-600'}`}>{t('settings.actions.change')}</button>
                                     </div>
                                 </div>
                             )}
 
-                            <SectionTitle>System</SectionTitle>
+                            <SectionTitle>{t('settings.sections.system')}</SectionTitle>
                             <Toggle
-                                label="Run at Startup"
-                                subLabel="Launch when system starts"
+                                label={t('settings.labels.runAtStartup')}
+                                subLabel={t('settings.labels.runAtStartupSub')}
                                 checked={settings.autoStart}
                                 onChange={(c) => setSettings({ ...settings, autoStart: c })}
                                 isDark={isDark}
@@ -264,7 +301,7 @@ export default function Settings() {
 
                     {activeTab === 'shortcuts' && (
                         <div className="space-y-6">
-                            <SectionTitle>Capture Shortcut</SectionTitle>
+                            <SectionTitle>{t('settings.sections.captureShortcut')}</SectionTitle>
                             <div className="grid grid-cols-1 gap-3">
                                 {shortcutsList.map(sc => (
                                     <button
@@ -281,14 +318,14 @@ export default function Settings() {
                                 ))}
                             </div>
 
-                            <SectionTitle>Other Shortcuts</SectionTitle>
+                            <SectionTitle>{t('settings.sections.otherShortcuts')}</SectionTitle>
                             <div className="space-y-0.5">
                                 {[
-                                    { label: 'Read QR / Barcode', key: 'CTRL+SHIFT+Q' },
-                                    { label: 'Capture Table', key: 'CTRL+SHIFT+T' },
-                                    { label: 'Read Handwriting', key: 'CTRL+SHIFT+H' },
-                                    { label: 'Magnifier', key: 'M' },
-                                    { label: 'Exit', key: 'ESC' }
+                                    { label: t('settings.shortcuts.readQr'), key: 'CTRL+SHIFT+Q' },
+                                    { label: t('settings.shortcuts.captureTable'), key: 'CTRL+SHIFT+T' },
+                                    { label: t('settings.shortcuts.readHandwriting'), key: 'CTRL+SHIFT+H' },
+                                    { label: t('settings.shortcuts.magnifier'), key: 'M' },
+                                    { label: t('settings.shortcuts.exit'), key: 'ESC' }
                                 ].map((item, i) => (
                                     <div key={i} className={`flex items-center justify-between py-3 border-b last:border-0 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
                                         <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{item.label}</span>
@@ -304,7 +341,7 @@ export default function Settings() {
             {/* Sticky Footer */}
             <div className={`p-4 border-t flex items-center justify-between no-drag transition-all duration-500 ${isDark ? 'bg-[#1e1e1e] border-[#2b2b2b]' : 'bg-white border-slate-200'} ${saved ? (isDark ? 'bg-emerald-950/30' : 'bg-emerald-50') : ''}`}>
                 <div className={`text-[10px] font-medium ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                    {saved ? <span className="text-emerald-500 animate-pulse">✓ SAVED</span> : 'WAITING FOR CHANGES'}
+                    {saved ? <span className="text-emerald-500 animate-pulse">✓ {t('settings.actions.saved')}</span> : t('settings.actions.waiting')}
                 </div>
                 <button
                     onClick={handleSave}
@@ -313,7 +350,7 @@ export default function Settings() {
                         : (isDark ? 'bg-white text-black hover:bg-indigo-50 shadow-white/10' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/10')
                         }`}
                 >
-                    {saved ? 'SAVED' : 'SAVE'}
+                    {saved ? t('settings.actions.saved') : t('settings.actions.save')}
                 </button>
             </div>
         </div>
