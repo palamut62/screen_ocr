@@ -17,7 +17,7 @@ function App() {
     const [selection, setSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null)
     const [isSelecting, setIsSelecting] = useState(false)
     const [mousePos, setMousePos] = useState<{ x: number, y: number }>({ x: 0, y: 0 })
-    const [showMagnifier, setShowMagnifier] = useState(true)
+    const [showMagnifier, setShowMagnifier] = useState(false)
     const startPos = useRef<{ x: number, y: number } | null>(null)
     const imgRef = useRef<HTMLImageElement>(null)
 
@@ -156,10 +156,18 @@ function App() {
                 <img
                     ref={imgRef}
                     src={imageSrc}
-                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                    style={{ objectFit: 'fill' }}
                     alt="Screen"
                     draggable={false}
                 />
+            )}
+
+            {/* Screen capture border */}
+            {imageSrc && (
+                <div className="absolute inset-0 pointer-events-none z-[60]">
+                    <div className="absolute inset-0 border-2 border-white/20" />
+                </div>
             )}
 
             {/* Büyüteç */}
@@ -193,15 +201,6 @@ function App() {
                 </div>
             )}
 
-            {/* Loading state */}
-            {!imageSrc && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/90">
-                    <div className="text-center">
-                        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                        <p className="text-white text-lg">Yükleniyor...</p>
-                    </div>
-                </div>
-            )}
 
             {/* Dim overlay: selection olmadığında tam ekran, olduğunda 4 parça */}
             {imageSrc && !selection && (
@@ -222,23 +221,36 @@ function App() {
 
             {/* Kısayol bilgisi */}
             {imageSrc && !isSelecting && (
-                <div className="absolute bottom-6 left-6 premium-card text-white/90 text-[10px] uppercase tracking-wider font-semibold px-4 py-2.5 rounded-none pointer-events-none animate-in">
-                    <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1.5"><kbd className="bg-white/10 px-1.5 py-0.5 rounded">ESC</kbd> İptal</span>
-                        <div className="w-px h-3 bg-white/20" />
-                        <span className="flex items-center gap-1.5"><kbd className="bg-white/10 px-1.5 py-0.5 rounded">M</kbd> Büyüteç {showMagnifier ? 'Kapat' : 'Aç'}</span>
-                    </div>
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-full flex items-center gap-6 pointer-events-none animate-in">
+                    <span className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                        <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono text-[10px]">ESC</kbd>
+                        Cancel
+                    </span>
+                    <div className="w-px h-4 bg-white/10" />
+                    <span className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                        <kbd className="bg-white/10 px-2 py-1 rounded text-white font-mono text-[10px]">M</kbd>
+                        Magnifier
+                    </span>
                 </div>
             )}
 
             {/* Selection border + boyut etiketi */}
             {selection && selection.w > 0 && selection.h > 0 && (
-                <div className="absolute z-50 pointer-events-none transition-all duration-75"
+                <div className="absolute z-50 pointer-events-none"
                     style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}>
-                    <div className="w-full h-full border-2 border-primary shadow-[0_0_15px_rgba(99,102,241,0.3)]" />
-                    <div className="absolute -bottom-7 left-0 premium-card text-white text-[10px] font-bold px-2 py-1 rounded-md whitespace-nowrap border-primary/30">
-                        {Math.round(selection.w)} × {Math.round(selection.h)} PX
+                    {/* Simple border */}
+                    <div className="absolute inset-0 border-2 border-white/80" />
+                    {/* Size label */}
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2">
+                        <div className="bg-black/70 text-white text-[11px] px-3 py-1 rounded">
+                            {Math.round(selection.w)} × {Math.round(selection.h)}
+                        </div>
                     </div>
+                    {/* Corner handles */}
+                    <div className="absolute -top-1 -left-1 w-2 h-2 bg-white border border-gray-400" />
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-white border border-gray-400" />
+                    <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-white border border-gray-400" />
+                    <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-white border border-gray-400" />
                 </div>
             )}
         </div>

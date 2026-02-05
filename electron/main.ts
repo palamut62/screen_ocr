@@ -144,15 +144,7 @@ function saveToFile(text: string, mode: 'ocr' | 'qr' | 'table' | 'handwriting') 
 }
 
 // Kısayol seçenekleri
-const shortcutOptions = [
-    { label: 'Ctrl+Shift+O', accelerator: 'CommandOrControl+Shift+O' },
-    { label: 'Ctrl+Shift+S', accelerator: 'CommandOrControl+Shift+S' },
-    { label: 'Ctrl+Shift+C', accelerator: 'CommandOrControl+Shift+C' },
-    { label: 'Ctrl+Alt+O', accelerator: 'CommandOrControl+Alt+O' },
-    { label: 'Ctrl+Alt+S', accelerator: 'CommandOrControl+Alt+S' },
-    { label: 'Print Screen', accelerator: 'PrintScreen' },
-    { label: 'Shift+Print Screen', accelerator: 'Shift+PrintScreen' },
-]
+
 
 // Çeviri fonksiyonu (translate-shell kullanarak)
 function translateText(text: string, targetLang: string): string | null {
@@ -356,7 +348,7 @@ function setAutostart(enabled: boolean) {
         const desktopEntry = `[Desktop Entry]
 Type=Application
 Name=Screen OCR
-Comment=OCR ile ekrandan text kopyala
+Comment=Extract text from screen
 Exec=${appPath}
 Icon=${path.join(__dirname, '../public/tray-icon.png')}
 Terminal=false
@@ -392,38 +384,45 @@ function addToHistory(text: string) {
 function updateTrayMenu() {
     if (!tray) return
 
-    const currentShortcutLabel = shortcutOptions.find(s => s.accelerator === currentShortcut)?.label || 'Ctrl+Shift+O'
 
-    // Geçmiş menüsü
-    const historyMenuItems: Electron.MenuItemConstructorOptions[] = ocrHistory.map((item, index) => ({
-        label: `${index + 1}. ${item.preview}`,
-        click: () => {
-            clipboard.writeText(item.text)
-            showNotification('Kopyalandı', item.preview)
-        }
-    }))
 
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
-        { label: `Metin Yakala (${currentShortcutLabel})`, click: () => startOCRCapture() },
-        { label: 'El Yazısı Oku (Ctrl+Shift+H)', click: () => startHandwritingCapture() },
-        { label: 'Tablo Yakala (Ctrl+Shift+T)', click: () => startTableCapture() },
-        { label: 'QR / Barkod Oku (Ctrl+Shift+Q)', click: () => startQRCapture() },
+        { label: 'Capture Text', click: () => setTimeout(startOCRCapture, 150) },
+        { label: 'Handwriting', click: () => setTimeout(startHandwritingCapture, 150) },
+        { label: 'Table', click: () => setTimeout(startTableCapture, 150) },
+        { label: 'QR / Barcode', click: () => setTimeout(startQRCapture, 150) },
+        { type: 'separator' },
     ]
 
-    if (historyMenuItems.length > 0) {
-        menuTemplate.push({ label: 'Son Sonuçlar', enabled: false })
-        menuTemplate.push(...historyMenuItems)
-        menuTemplate.push({
-            label: 'Geçmişi Temizle',
+    // Geçmiş menüsü - alt menü olarak
+    if (ocrHistory.length > 0) {
+        const historySubmenu: Electron.MenuItemConstructorOptions[] = ocrHistory.map((item) => ({
+            label: `  ${item.preview}`,
+            sublabel: new Date(item.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            click: () => {
+                clipboard.writeText(item.text)
+                showNotification('Copied', item.preview)
+            }
+        }))
+
+        historySubmenu.push({ type: 'separator' })
+        historySubmenu.push({
+            label: 'Clear History',
             click: () => {
                 ocrHistory.length = 0
                 updateTrayMenu()
             }
         })
+
+        menuTemplate.push({
+            label: `History (${ocrHistory.length})`,
+            submenu: historySubmenu
+        })
     }
 
-    menuTemplate.push({ label: 'Ayarlar', click: () => openSettings() })
-    menuTemplate.push({ label: 'Çıkış', click: () => app.quit() })
+    menuTemplate.push({ type: 'separator' })
+    menuTemplate.push({ label: 'Settings', click: () => openSettings() })
+    menuTemplate.push({ label: 'Quit', click: () => app.quit() })
 
     tray.setContextMenu(Menu.buildFromTemplate(menuTemplate))
 }
@@ -433,28 +432,29 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 function createWindow() {
     const primaryDisplay = screen.getPrimaryDisplay()
-    const { width, height } = primaryDisplay.workAreaSize
+    const { width, height } = primaryDisplay.size
 
     win = new BrowserWindow({
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
         },
-        transparent: false,
+        transparent: true,
         frame: false,
         hasShadow: false,
         alwaysOnTop: true,
-        show: false,        // Başlangıçta gizli
+        show: false,
         skipTaskbar: true,
-        backgroundColor: '#000000',
         width: width,
         height: height,
         x: 0,
         y: 0,
+        enableLargerThanScreen: true,
+        resizable: true,
+        movable: true,
     })
 
     win.webContents.on('before-input-event', (event, input) => {
         if (input.key === 'Escape' && input.type === 'keyDown') {
-            win?.setFullScreen(false)
             win?.hide()
             event.preventDefault()
         }
@@ -477,10 +477,10 @@ function captureWithExternalTool(): Electron.NativeImage | null {
     try { fs.unlinkSync(tmpFile) } catch { }
 
     const tools = [
-        `gnome-screenshot -f "${tmpFile}"`,
+        `scrot -o "${tmpFile}"`,
+        `import -window root "${tmpFile}"`,
         `spectacle -b -n -o "${tmpFile}"`,
-        `scrot "${tmpFile}"`,
-        `import -window root "${tmpFile}"`
+        `grim "${tmpFile}"`,
     ]
 
     for (const cmd of tools) {
@@ -541,20 +541,24 @@ async function startCapture() {
             const dataUrl = lastcapturedImage.toDataURL()
             console.log('Image captured! DataURL length:', dataUrl.length)
 
-            // Pencereyi göster
-            win.setFullScreen(true)
+            // Pencereyi tam ekran boyutunda göster (animasyonsuz)
+            const primaryDisplay = screen.getPrimaryDisplay()
+            const { width, height } = primaryDisplay.size
+            win.setBounds({ x: 0, y: 0, width, height })
+            win.setAlwaysOnTop(true, 'screen-saver')
+            win.setVisibleOnAllWorkspaces(true)
             win.show()
             win.focus()
 
-            // IPC gönder ve renderer'ın işlemesini bekle
+            // IPC gönder
             win.webContents.send('show-overlay', dataUrl)
             console.log('Window shown, IPC sent')
         } else {
-            showNotification('Ekran Yakalama Başarısız', 'Ekran yakalanamadı.')
+            showNotification('Capture Failed', 'Could not capture screen.')
         }
     } catch (err) {
         console.error("Capture failed:", err)
-        showNotification('Hata', 'Ekran yakalama hatası')
+        showNotification('Error', 'Screen capture failed')
     }
 }
 
@@ -567,7 +571,6 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
         return
     }
 
-    win.setFullScreen(false)
     win.hide()
 
     if (bounds.width <= 0 || bounds.height <= 0) {
@@ -667,12 +670,14 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
                 if (translated) {
                     translatedText = translated
                     // Hem orijinal hem çeviri kopyala
-                    finalText = `${text}\n\n--- Çeviri (${translateTarget.toUpperCase()}) ---\n${translated}`
+                    finalText = `${text}\n\n--- Translation (${translateTarget.toUpperCase()}) ---\n${translated}`
                 }
             }
 
             // Düzenleme penceresi aktifse göster
             if (showEditWindow && win) {
+                win.setAlwaysOnTop(false)
+                win.setVisibleOnAllWorkspaces(false)
                 win.setSize(600, 500)
                 win.center()
                 win.show()
@@ -687,19 +692,19 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
                 clipboard.writeText(finalText)
                 addToHistory(finalText)
                 saveToFile(finalText, captureMode)
-                const saveInfo = autoSaveEnabled ? ' (kaydedildi)' : ''
-                const modeLabel = captureMode === 'table' ? 'Tablo ' : ''
-                const translateInfo = translatedText ? ' +çeviri' : ''
-                showNotification(`${modeLabel}Kopyalandı!${saveInfo}${translateInfo}`, text.length > 80 ? text.substring(0, 80) + '...' : text)
+                const saveInfo = autoSaveEnabled ? ' (saved)' : ''
+                const modeLabel = captureMode === 'table' ? 'Table ' : ''
+                const translateInfo = translatedText ? ' +translated' : ''
+                showNotification(`${modeLabel}Copied!${saveInfo}${translateInfo}`, text.length > 80 ? text.substring(0, 80) + '...' : text)
             }
         } else {
             const messages: Record<string, string> = {
-                'qr': 'QR kod veya barkod bulunamadı.',
-                'table': 'Tablo yapısı algılanamadı.',
-                'handwriting': 'El yazısı okunamadı.',
-                'ocr': 'Seçilen alanda okunabilir metin yok.'
+                'qr': 'QR code or barcode not found.',
+                'table': 'Table structure not detected.',
+                'handwriting': 'Handwriting could not be read.',
+                'ocr': 'No readable text in the selected area.'
             }
-            showNotification('Bulunamadı', messages[captureMode])
+            showNotification('Not Found', messages[captureMode])
         }
 
         // Modu sıfırla
@@ -707,7 +712,7 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
 
     } catch (error) {
         console.error('OCR Error:', error)
-        showNotification('Hata', (error as Error).message)
+        showNotification('Error', (error as Error).message)
     }
     // Tray'da çalışmaya devam et (app.quit() yok)
 })
@@ -715,7 +720,6 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
 // IPC Handler: Cancel Selection (user pressed ESC or right click)
 ipcMain.on('cancel-selection', () => {
     if (win) {
-        win.setFullScreen(false)
         win.hide()
     }
 })
@@ -727,7 +731,8 @@ function openSettings() {
     if (!win || settingsOpen) return
 
     settingsOpen = true
-    win.setFullScreen(false)
+    win.setAlwaysOnTop(false)
+    win.setVisibleOnAllWorkspaces(false)
     win.setSize(600, 750)
     win.center()
     win.show()
@@ -794,7 +799,7 @@ ipcMain.on('save-settings', (_event, newSettings) => {
 // IPC: Klasör seç
 ipcMain.handle('choose-directory', async () => {
     const result = await dialog.showOpenDialog({
-        title: 'OCR Kayıt Klasörü Seç',
+        title: 'Select Save Folder',
         defaultPath: saveDirectory,
         properties: ['openDirectory', 'createDirectory']
     })
@@ -896,7 +901,7 @@ app.whenReady().then(() => {
         tray = new Tray(trayIcon)
         tray.setToolTip('Screen OCR - Ctrl+Shift+O ile yakala')
         updateTrayMenu() // Menüyü oluştur
-        tray.on('click', () => startCapture())
+        tray.on('click', () => setTimeout(startCapture, 100))
         console.log('Tray icon created successfully')
     } catch (e) {
         console.log('Tray oluşturulamadı:', e)

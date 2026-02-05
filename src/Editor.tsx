@@ -9,99 +9,74 @@ interface EditorProps {
 }
 
 export default function Editor({ text, mode, theme, onCopy, onClose }: EditorProps) {
-    const isDark = theme === 'dark'
     const [editedText, setEditedText] = useState(text)
-    const [charCount, setCharCount] = useState(text.length)
-    const [wordCount, setWordCount] = useState(0)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const isDark = theme === 'dark'
 
     useEffect(() => {
         setEditedText(text)
-        setCharCount(text.length)
-        setWordCount(text.split(/\s+/).filter(w => w).length)
-        // Focus textarea
         setTimeout(() => textareaRef.current?.focus(), 100)
     }, [text])
-
-    useEffect(() => {
-        setCharCount(editedText.length)
-        setWordCount(editedText.split(/\s+/).filter(w => w).length)
-    }, [editedText])
 
     const handleCopy = () => {
         onCopy(editedText, mode)
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        // Ctrl+Enter to copy
         if (e.ctrlKey && e.key === 'Enter') {
             handleCopy()
         }
-        // Escape to close
         if (e.key === 'Escape') {
             onClose()
         }
     }
 
-    const modeLabels: Record<string, string> = {
-        'ocr': 'OCR Sonucu',
-        'qr': 'QR/Barkod',
-        'table': 'Tablo',
-        'handwriting': 'El Yazısı'
-    }
-
     return (
-        <div className={`h-screen w-screen p-4 font-sans flex flex-col drag transition-colors ${isDark ? 'bg-[#0f172a] text-slate-200' : 'bg-gray-100 text-gray-800'}`}>
+        <div className={`h-screen w-screen flex flex-col drag ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'}`}>
             {/* Header */}
-            <div className="flex items-center justify-between mb-3 no-drag">
-                <div>
-                    <h1 className={`text-lg font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {modeLabels[mode] || 'Metin'} <span className="text-indigo-500">Düzenle</span>
-                    </h1>
-                    <p className={`text-[9px] font-bold uppercase tracking-widest ${isDark ? 'text-slate-500' : 'text-gray-500'}`}>
-                        {charCount} karakter • {wordCount} kelime
-                    </p>
-                </div>
+            <div className={`h-10 px-3 flex items-center justify-between no-drag ${isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
+                <span className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Metin Düzenleyici
+                </span>
                 <button
                     onClick={onClose}
-                    className={`w-8 h-8 flex items-center justify-center rounded-none border transition-all group ${isDark ? 'bg-white/5 hover:bg-white/10 border-white/10' : 'bg-gray-200 hover:bg-gray-300 border-gray-300'}`}
+                    className={`w-6 h-6 flex items-center justify-center rounded ${isDark ? 'hover:bg-white/10 text-gray-500' : 'hover:bg-gray-200 text-gray-400'}`}
                 >
-                    <span className={`text-xs ${isDark ? 'text-slate-400 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-900'}`}>✕</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
                 </button>
             </div>
 
             {/* Textarea */}
-            <div className="flex-1 mb-3 no-drag">
+            <div className="flex-1 no-drag">
                 <textarea
                     ref={textareaRef}
                     value={editedText}
                     onChange={(e) => setEditedText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    className={`w-full h-full border rounded-none p-3 text-sm font-mono resize-none focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 ${isDark ? 'bg-slate-800/50 border-white/10 text-slate-200' : 'bg-white border-gray-300 text-gray-800'}`}
-                    placeholder="Metin burada görünecek..."
+                    className={`w-full h-full p-4 text-sm resize-none focus:outline-none ${isDark ? 'bg-[#1a1a1a] text-gray-300' : 'bg-white text-gray-800'}`}
+                    placeholder="Metin yok..."
                     spellCheck={false}
                 />
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2 no-drag">
+            {/* Footer */}
+            <div className={`h-12 px-3 flex items-center justify-end gap-2 no-drag ${isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
                 <button
                     onClick={onClose}
-                    className={`px-4 py-2.5 border rounded-none text-[10px] font-black uppercase tracking-widest transition-all ${isDark ? 'bg-slate-800 hover:bg-slate-700 border-white/10 text-slate-400' : 'bg-gray-200 hover:bg-gray-300 border-gray-300 text-gray-600'}`}
+                    className={`px-3 py-1.5 text-xs rounded ${isDark ? 'text-gray-400 hover:bg-white/10' : 'text-gray-500 hover:bg-gray-200'}`}
                 >
                     İptal
                 </button>
                 <button
                     onClick={handleCopy}
-                    className="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 rounded-none text-[10px] font-black text-white uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
+                    className={`px-4 py-1.5 text-xs rounded ${isDark ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                 >
-                    Kopyala (Ctrl+Enter)
+                    Kopyala
                 </button>
             </div>
-
-            <p className={`text-center text-[8px] font-bold uppercase tracking-widest mt-3 ${isDark ? 'text-slate-600' : 'text-gray-400'}`}>
-                ESC ile kapat • CTRL+ENTER ile kopyala
-            </p>
         </div>
     )
 }
