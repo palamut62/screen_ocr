@@ -1,9 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
 import Settings from './Settings'
+import Editor from './Editor'
+
+interface EditorData {
+    text: string
+    mode: string
+    hasTranslation: boolean
+    theme: 'dark' | 'light'
+}
 
 function App() {
-    const [mode, setMode] = useState<'overlay' | 'settings'>('overlay')
+    const [mode, setMode] = useState<'overlay' | 'settings' | 'editor'>('overlay')
+    const [editorData, setEditorData] = useState<EditorData | null>(null)
     const [imageSrc, setImageSrc] = useState<string | null>(null)
     const [selection, setSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null)
     const [isSelecting, setIsSelecting] = useState(false)
@@ -29,12 +38,21 @@ function App() {
             setImageSrc(null)
         }
 
+        const editorHandler = (_event: any, data: EditorData) => {
+            console.log('Received show-editor')
+            setEditorData(data)
+            setMode('editor')
+            setImageSrc(null)
+        }
+
         window.ipcRenderer.on('show-overlay', overlayHandler)
         window.ipcRenderer.on('show-settings', settingsHandler)
+        window.ipcRenderer.on('show-editor', editorHandler)
 
         return () => {
             window.ipcRenderer.off('show-overlay', overlayHandler)
             window.ipcRenderer.off('show-settings', settingsHandler)
+            window.ipcRenderer.off('show-editor', editorHandler)
         }
     }, [])
 
@@ -104,6 +122,27 @@ function App() {
         return <Settings />
     }
 
+    // Editor modundaysa Editor bileşenini göster
+    if (mode === 'editor' && editorData) {
+        return (
+            <Editor
+                text={editorData.text}
+                mode={editorData.mode}
+                theme={editorData.theme}
+                onCopy={(text, mode) => {
+                    window.ipcRenderer.send('editor-copy', { text, mode })
+                    setMode('overlay')
+                    setEditorData(null)
+                }}
+                onClose={() => {
+                    window.ipcRenderer.send('editor-close')
+                    setMode('overlay')
+                    setEditorData(null)
+                }}
+            />
+        )
+    }
+
     return (
         <div
             className={`w-screen h-screen overflow-hidden relative select-none ${imageSrc ? 'cursor-crosshair' : 'cursor-wait'}`}
@@ -126,21 +165,21 @@ function App() {
             {/* Büyüteç */}
             {imageSrc && showMagnifier && !isSelecting && (
                 <div
-                    className="absolute pointer-events-none border-2 border-white rounded-full shadow-lg overflow-hidden"
+                    className="absolute pointer-events-none border-2 border-primary/50 rounded-none shadow-2xl overflow-hidden ring-4 ring-black/20"
                     style={{
-                        width: 120,
-                        height: 120,
-                        left: mousePos.x + 20,
-                        top: mousePos.y + 20,
+                        width: 150,
+                        height: 150,
+                        left: mousePos.x - 75,
+                        top: mousePos.y - 75,
                         zIndex: 100,
                     }}
                 >
                     <div
                         style={{
-                            width: 120,
-                            height: 120,
+                            width: 150,
+                            height: 150,
                             backgroundImage: `url(${imageSrc})`,
-                            backgroundPosition: `-${mousePos.x * 2 - 60}px -${mousePos.y * 2 - 60}px`,
+                            backgroundPosition: `-${mousePos.x * 2 - 75}px -${mousePos.y * 2 - 75}px`,
                             backgroundSize: `${window.innerWidth * 2}px ${window.innerHeight * 2}px`,
                         }}
                     />
@@ -183,18 +222,22 @@ function App() {
 
             {/* Kısayol bilgisi */}
             {imageSrc && !isSelecting && (
-                <div className="absolute bottom-4 left-4 bg-black/70 text-white text-xs px-3 py-2 rounded-lg pointer-events-none">
-                    <div>ESC: İptal | M: Büyüteç {showMagnifier ? 'Kapat' : 'Aç'}</div>
+                <div className="absolute bottom-6 left-6 premium-card text-white/90 text-[10px] uppercase tracking-wider font-semibold px-4 py-2.5 rounded-none pointer-events-none animate-in">
+                    <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1.5"><kbd className="bg-white/10 px-1.5 py-0.5 rounded">ESC</kbd> İptal</span>
+                        <div className="w-px h-3 bg-white/20" />
+                        <span className="flex items-center gap-1.5"><kbd className="bg-white/10 px-1.5 py-0.5 rounded">M</kbd> Büyüteç {showMagnifier ? 'Kapat' : 'Aç'}</span>
+                    </div>
                 </div>
             )}
 
             {/* Selection border + boyut etiketi */}
             {selection && selection.w > 0 && selection.h > 0 && (
-                <div className="absolute z-50 pointer-events-none"
+                <div className="absolute z-50 pointer-events-none transition-all duration-75"
                     style={{ left: selection.x, top: selection.y, width: selection.w, height: selection.h }}>
-                    <div className="w-full h-full border-2 border-blue-400" />
-                    <div className="absolute -bottom-5 left-0 bg-black/70 text-blue-300 text-xs px-1.5 py-0.5 rounded whitespace-nowrap">
-                        {Math.round(selection.w)} × {Math.round(selection.h)}
+                    <div className="w-full h-full border-2 border-primary shadow-[0_0_15px_rgba(99,102,241,0.3)]" />
+                    <div className="absolute -bottom-7 left-0 premium-card text-white text-[10px] font-bold px-2 py-1 rounded-md whitespace-nowrap border-primary/30">
+                        {Math.round(selection.w)} × {Math.round(selection.h)} PX
                     </div>
                 </div>
             )}

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen, clipboard, Tray, Menu, nativeImage, globalShortcut, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, clipboard, Tray, Menu, nativeImage, globalShortcut, dialog, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { execSync } from 'node:child_process'
@@ -27,6 +27,11 @@ interface AppSettings {
     autoSave: boolean
     saveDirectory: string
     showMagnifier: boolean
+    autoDetectLanguage: boolean
+    theme: 'dark' | 'light'
+    translateEnabled: boolean
+    translateTarget: string
+    showEditWindow: boolean
 }
 
 const defaultSettings: AppSettings = {
@@ -34,7 +39,12 @@ const defaultSettings: AppSettings = {
     shortcut: 'CommandOrControl+Shift+O',
     autoSave: false,
     saveDirectory: path.join(process.env.HOME || '', 'OCR-Sonuclari'),
-    showMagnifier: true
+    showMagnifier: true,
+    autoDetectLanguage: false,
+    theme: 'dark',
+    translateEnabled: false,
+    translateTarget: 'tr',
+    showEditWindow: false
 }
 
 // Ayarları yükle
@@ -62,7 +72,12 @@ function saveSettings() {
             shortcut: currentShortcut,
             autoSave: autoSaveEnabled,
             saveDirectory: saveDirectory,
-            showMagnifier: true
+            showMagnifier: true,
+            autoDetectLanguage: autoDetectLanguage,
+            theme: currentTheme,
+            translateEnabled: translateEnabled,
+            translateTarget: translateTarget,
+            showEditWindow: showEditWindow
         }
         fs.writeFileSync(configFile, JSON.stringify(settings, null, 2))
         console.log('Ayarlar kaydedildi:', configFile)
@@ -84,35 +99,21 @@ interface HistoryItem {
 const ocrHistory: HistoryItem[] = []
 const MAX_HISTORY = 10
 
-// Dil Seçenekleri
-interface Language {
-    code: string
-    name: string
-}
-const languages: Language[] = [
-    { code: 'tur', name: '🇹🇷 Türkçe' },
-    { code: 'eng', name: '🇬🇧 English' },
-    { code: 'deu', name: '🇩🇪 Deutsch' },
-    { code: 'fra', name: '🇫🇷 Français' },
-    { code: 'spa', name: '🇪🇸 Español' },
-    { code: 'ita', name: '🇮🇹 Italiano' },
-    { code: 'rus', name: '🇷🇺 Русский' },
-    { code: 'ara', name: '🇸🇦 العربية' },
-    { code: 'chi_sim', name: '🇨🇳 中文' },
-    { code: 'jpn', name: '🇯🇵 日本語' },
-    { code: 'kor', name: '🇰🇷 한국어' },
-    { code: 'eng+tur', name: '🌐 English + Türkçe' },
-]
 // Ayarları yükle
 const settings = loadSettings()
 let currentLanguage = settings.language
 let currentShortcut = settings.shortcut
-let captureMode: 'ocr' | 'qr' = 'ocr'
+let captureMode: 'ocr' | 'qr' | 'table' | 'handwriting' = 'ocr'
 let autoSaveEnabled = settings.autoSave
 let saveDirectory = settings.saveDirectory
+let autoDetectLanguage = settings.autoDetectLanguage
+let currentTheme: 'dark' | 'light' = settings.theme
+let translateEnabled = settings.translateEnabled
+let translateTarget = settings.translateTarget
+let showEditWindow = settings.showEditWindow
 
 // Dosyaya kaydetme fonksiyonu
-function saveToFile(text: string, mode: 'ocr' | 'qr') {
+function saveToFile(text: string, mode: 'ocr' | 'qr' | 'table' | 'handwriting') {
     if (!autoSaveEnabled) return
 
     // Klasör yoksa oluştur
@@ -142,30 +143,6 @@ function saveToFile(text: string, mode: 'ocr' | 'qr') {
     console.log('Saved to:', txtFile)
 }
 
-// Kayıt klasörünü seç
-async function chooseSaveDirectory() {
-    const result = await dialog.showOpenDialog({
-        title: 'OCR Kayıt Klasörü Seç',
-        defaultPath: saveDirectory,
-        properties: ['openDirectory', 'createDirectory']
-    })
-
-    if (!result.canceled && result.filePaths[0]) {
-        saveDirectory = result.filePaths[0]
-        saveSettings()
-        showNotification('📁 Klasör Seçildi', saveDirectory)
-        updateTrayMenu()
-    }
-}
-
-// Kayıt klasörünü aç
-function openSaveDirectory() {
-    if (!fs.existsSync(saveDirectory)) {
-        fs.mkdirSync(saveDirectory, { recursive: true })
-    }
-    execSync(`xdg-open "${saveDirectory}"`)
-}
-
 // Kısayol seçenekleri
 const shortcutOptions = [
     { label: 'Ctrl+Shift+O', accelerator: 'CommandOrControl+Shift+O' },
@@ -177,26 +154,148 @@ const shortcutOptions = [
     { label: 'Shift+Print Screen', accelerator: 'Shift+PrintScreen' },
 ]
 
-function changeShortcut(newShortcut: string) {
-    // Eski kısayolu kaldır
-    globalShortcut.unregister(currentShortcut)
+// Çeviri fonksiyonu (translate-shell kullanarak)
+function translateText(text: string, targetLang: string): string | null {
+    try {
+        // translate-shell (trans) komutunu kullan
+        const safeText = text.replace(/'/g, "'\\''").substring(0, 5000) // Max 5000 karakter
+        const result = execSync(`trans -b -t ${targetLang} '${safeText}' 2>/dev/null`, {
+            timeout: 30000,
+            encoding: 'utf-8'
+        })
+        return result.toString().trim()
+    } catch (e) {
+        console.log('Translation failed:', e)
+        // Alternatif: Google Translate API via curl
+        try {
+            const encoded = encodeURIComponent(text.substring(0, 5000))
+            const result = execSync(`curl -s "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encoded}" 2>/dev/null`, {
+                timeout: 10000,
+                encoding: 'utf-8'
+            })
+            const json = JSON.parse(result)
+            if (json && json[0]) {
+                return json[0].map((item: any) => item[0]).join('')
+            }
+        } catch {
+            console.log('Fallback translation also failed')
+        }
+        return null
+    }
+}
 
-    // Yeni kısayolu kaydet
-    const success = globalShortcut.register(newShortcut, () => {
-        console.log('Hotkey pressed:', newShortcut)
-        startCapture()
-    })
+// Otomatik dil algılama fonksiyonu
+function detectLanguage(imagePath: string): string {
+    try {
+        // Tesseract OSD ile script algılama
+        const result = execSync(`tesseract "${imagePath}" stdout --psm 0 -l osd 2>/dev/null`, { timeout: 10000 })
+        const output = result.toString()
 
-    if (success) {
-        currentShortcut = newShortcut
-        saveSettings()
-        const label = shortcutOptions.find(s => s.accelerator === newShortcut)?.label || newShortcut
-        showNotification('⌨️ Kısayol Değişti', label)
-        updateTrayMenu()
-    } else {
-        // Başarısız olduysa eskiyi geri yükle
-        globalShortcut.register(currentShortcut, () => startCapture())
-        showNotification('❌ Hata', 'Bu kısayol kullanılamıyor')
+        // Script tipini bul
+        const scriptMatch = output.match(/Script:\s*(\w+)/i)
+        if (scriptMatch) {
+            const script = scriptMatch[1].toLowerCase()
+
+            // Script'e göre dil eşleştirmesi
+            const scriptToLang: Record<string, string> = {
+                'latin': 'eng+tur+deu+fra+spa',
+                'cyrillic': 'rus',
+                'arabic': 'ara',
+                'han': 'chi_sim',
+                'hangul': 'kor',
+                'japanese': 'jpn',
+                'hebrew': 'heb',
+                'greek': 'ell',
+                'thai': 'tha',
+                'devanagari': 'hin'
+            }
+
+            if (scriptToLang[script]) {
+                console.log('Detected script:', script, '-> Language:', scriptToLang[script])
+                return scriptToLang[script]
+            }
+        }
+    } catch (e) {
+        console.log('Language detection failed, using default')
+    }
+
+    // Varsayılan olarak seçili dili kullan
+    return currentLanguage
+}
+
+// Tablo algılama fonksiyonu (TSV -> Markdown)
+function extractTable(imagePath: string): string | null {
+    try {
+        // Tesseract TSV çıktısı al
+        const result = execSync(`tesseract "${imagePath}" stdout -l ${currentLanguage} --psm 6 tsv 2>/dev/null`, { timeout: 30000 })
+        const tsvData = result.toString().trim()
+
+        if (!tsvData) return null
+
+        const lines = tsvData.split('\n')
+        if (lines.length < 2) return null
+
+        // TSV parse et
+        const rows: string[][] = []
+        let currentRow: { text: string, left: number }[] = []
+        let lastBlockNum = -1
+        let lastLineNum = -1
+
+        for (let i = 1; i < lines.length; i++) { // Skip header
+            const cols = lines[i].split('\t')
+            if (cols.length < 12) continue
+
+            const blockNum = parseInt(cols[2])
+            const lineNum = parseInt(cols[4])
+            const left = parseInt(cols[6])
+            const text = cols[11]?.trim()
+
+            if (!text || text === '') continue
+
+            // Yeni satır mı?
+            if (blockNum !== lastBlockNum || lineNum !== lastLineNum) {
+                if (currentRow.length > 0) {
+                    // Sırala ve ekle
+                    currentRow.sort((a, b) => a.left - b.left)
+                    rows.push(currentRow.map(c => c.text))
+                }
+                currentRow = []
+                lastBlockNum = blockNum
+                lastLineNum = lineNum
+            }
+
+            currentRow.push({ text, left })
+        }
+
+        // Son satırı ekle
+        if (currentRow.length > 0) {
+            currentRow.sort((a, b) => a.left - b.left)
+            rows.push(currentRow.map(c => c.text))
+        }
+
+        if (rows.length === 0) return null
+
+        // Markdown tablosuna çevir
+        const maxCols = Math.max(...rows.map(r => r.length))
+
+        // Sütunları eşitle
+        const normalizedRows = rows.map(row => {
+            while (row.length < maxCols) row.push('')
+            return row
+        })
+
+        // Markdown oluştur
+        let markdown = '| ' + normalizedRows[0].join(' | ') + ' |\n'
+        markdown += '| ' + normalizedRows[0].map(() => '---').join(' | ') + ' |\n'
+
+        for (let i = 1; i < normalizedRows.length; i++) {
+            markdown += '| ' + normalizedRows[i].join(' | ') + ' |\n'
+        }
+
+        return markdown.trim()
+    } catch (e) {
+        console.log('Table extraction failed:', e)
+        return null
     }
 }
 
@@ -219,6 +318,18 @@ function startQRCapture() {
 // OCR modu ile yakalama başlat
 function startOCRCapture() {
     captureMode = 'ocr'
+    startCapture()
+}
+
+// Tablo modu ile yakalama başlat
+function startTableCapture() {
+    captureMode = 'table'
+    startCapture()
+}
+
+// El yazısı modu ile yakalama başlat
+function startHandwritingCapture() {
+    captureMode = 'handwriting'
     startCapture()
 }
 
@@ -254,13 +365,13 @@ StartupNotify=false
 X-GNOME-Autostart-enabled=true
 `
         fs.writeFileSync(autostartFile, desktopEntry)
-        showNotification('✓ Autostart Açık', 'Uygulama sistem başlangıcında çalışacak')
+        console.log('Autostart enabled')
     } else {
         // .desktop dosyasını sil
         if (fs.existsSync(autostartFile)) {
             fs.unlinkSync(autostartFile)
         }
-        showNotification('✗ Autostart Kapalı', 'Uygulama artık otomatik başlamayacak')
+        console.log('Autostart disabled')
     }
     updateTrayMenu()
 }
@@ -288,33 +399,31 @@ function updateTrayMenu() {
         label: `${index + 1}. ${item.preview}`,
         click: () => {
             clipboard.writeText(item.text)
-            showNotification('📋 Kopyalandı', item.preview)
+            showNotification('Kopyalandı', item.preview)
         }
     }))
 
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
-        { label: `📷 Text Yakala (${currentShortcutLabel})`, click: () => startOCRCapture() },
-        { label: '📱 QR/Barkod Oku (Ctrl+Shift+Q)', click: () => startQRCapture() },
-        { type: 'separator' },
+        { label: `Metin Yakala (${currentShortcutLabel})`, click: () => startOCRCapture() },
+        { label: 'El Yazısı Oku (Ctrl+Shift+H)', click: () => startHandwritingCapture() },
+        { label: 'Tablo Yakala (Ctrl+Shift+T)', click: () => startTableCapture() },
+        { label: 'QR / Barkod Oku (Ctrl+Shift+Q)', click: () => startQRCapture() },
     ]
 
     if (historyMenuItems.length > 0) {
-        menuTemplate.push({ label: '📜 Son OCR Sonuçları', enabled: false })
+        menuTemplate.push({ label: 'Son Sonuçlar', enabled: false })
         menuTemplate.push(...historyMenuItems)
-        menuTemplate.push({ type: 'separator' })
         menuTemplate.push({
-            label: '🗑️ Geçmişi Temizle',
+            label: 'Geçmişi Temizle',
             click: () => {
                 ocrHistory.length = 0
                 updateTrayMenu()
             }
         })
-        menuTemplate.push({ type: 'separator' })
     }
 
-    menuTemplate.push({ label: '⚙️ Ayarlar', click: () => openSettings() })
-    menuTemplate.push({ type: 'separator' })
-    menuTemplate.push({ label: '❌ Çıkış', click: () => app.quit() })
+    menuTemplate.push({ label: 'Ayarlar', click: () => openSettings() })
+    menuTemplate.push({ label: 'Çıkış', click: () => app.quit() })
 
     tray.setContextMenu(Menu.buildFromTemplate(menuTemplate))
 }
@@ -450,7 +559,7 @@ async function startCapture() {
 }
 
 // IPC Handler: Selection Complete
-ipcMain.on('selection-complete', async (event, bounds: { x: number, y: number, width: number, height: number }) => {
+ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, width: number, height: number }) => {
     console.log('=== SELECTION COMPLETE ===', bounds)
 
     if (!win || !lastcapturedImage) {
@@ -497,28 +606,100 @@ ipcMain.on('selection-complete', async (event, bounds: { x: number, y: number, w
                 text = qrResult
                 console.log('QR/Barcode found:', text)
             }
+        } else if (captureMode === 'table') {
+            // Tablo modu
+            console.log('Trying table extraction...')
+            const tableResult = extractTable(tmpImage)
+            if (tableResult) {
+                text = tableResult
+                console.log('Table extracted:', text.substring(0, 100))
+            }
+        } else if (captureMode === 'handwriting') {
+            // El yazısı modu - PSM 7 (single line) veya 13 (raw line) kullan
+            console.log('Trying handwriting recognition...')
+            try {
+                // Önce görüntüyü ön işleme tabi tut (imagemagick ile kontrast artır)
+                const processedImage = '/tmp/ocr-handwriting-processed.png'
+                try {
+                    execSync(`convert "${tmpImage}" -colorspace Gray -contrast-stretch 0.1x0.1% -sharpen 0x1 "${processedImage}" 2>/dev/null`, { timeout: 5000 })
+                } catch {
+                    // ImageMagick yoksa orijinal görüntüyü kullan
+                    fs.copyFileSync(tmpImage, processedImage)
+                }
+
+                // El yazısı için PSM 6 (block) ve OEM 1 (LSTM) kullan
+                execSync(`tesseract "${processedImage}" "${tmpOutput}" -l ${currentLanguage} --psm 6 --oem 1 2>/dev/null`, { timeout: 30000 })
+                text = fs.readFileSync(tmpOutput + '.txt', 'utf-8').trim()
+                console.log('Handwriting result:', text.length)
+                try { fs.unlinkSync(processedImage) } catch { }
+                try { fs.unlinkSync(tmpOutput + '.txt') } catch { }
+            } catch (e) {
+                console.log('Handwriting recognition failed:', e)
+            }
         } else {
             // OCR modu
-            console.log('Starting OCR with tesseract CLI... Language:', currentLanguage)
-            execSync(`tesseract "${tmpImage}" "${tmpOutput}" -l ${currentLanguage} 2>/dev/null`, { timeout: 30000 })
+            let ocrLanguage = currentLanguage
+
+            // Otomatik dil algılama aktifse
+            if (autoDetectLanguage) {
+                console.log('Auto-detecting language...')
+                ocrLanguage = detectLanguage(tmpImage)
+            }
+
+            console.log('Starting OCR with tesseract CLI... Language:', ocrLanguage)
+            execSync(`tesseract "${tmpImage}" "${tmpOutput}" -l ${ocrLanguage} 2>/dev/null`, { timeout: 30000 })
             text = fs.readFileSync(tmpOutput + '.txt', 'utf-8').trim()
             console.log('OCR result length:', text.length)
-            try { fs.unlinkSync(tmpOutput + '.txt') } catch {}
+            try { fs.unlinkSync(tmpOutput + '.txt') } catch { }
         }
 
         // Temizlik
-        try { fs.unlinkSync(tmpImage) } catch {}
+        try { fs.unlinkSync(tmpImage) } catch { }
 
         if (text) {
-            clipboard.writeText(text)
-            addToHistory(text)
-            saveToFile(text, captureMode) // Dosyaya kaydet
-            const icon = captureMode === 'qr' ? '📱' : '✓'
-            const saveInfo = autoSaveEnabled ? ' (kaydedildi)' : ''
-            showNotification(`${icon} Kopyalandı!${saveInfo}`, text.length > 80 ? text.substring(0, 80) + '...' : text)
+            let finalText = text
+            let translatedText = ''
+
+            // Çeviri aktifse ve OCR/el yazısı modundaysa çevir
+            if (translateEnabled && (captureMode === 'ocr' || captureMode === 'handwriting')) {
+                console.log('Translating to:', translateTarget)
+                const translated = translateText(text, translateTarget)
+                if (translated) {
+                    translatedText = translated
+                    // Hem orijinal hem çeviri kopyala
+                    finalText = `${text}\n\n--- Çeviri (${translateTarget.toUpperCase()}) ---\n${translated}`
+                }
+            }
+
+            // Düzenleme penceresi aktifse göster
+            if (showEditWindow && win) {
+                win.setSize(600, 500)
+                win.center()
+                win.show()
+                win.webContents.send('show-editor', {
+                    text: finalText,
+                    mode: captureMode,
+                    hasTranslation: !!translatedText,
+                    theme: currentTheme
+                })
+            } else {
+                // Direkt kopyala
+                clipboard.writeText(finalText)
+                addToHistory(finalText)
+                saveToFile(finalText, captureMode)
+                const saveInfo = autoSaveEnabled ? ' (kaydedildi)' : ''
+                const modeLabel = captureMode === 'table' ? 'Tablo ' : ''
+                const translateInfo = translatedText ? ' +çeviri' : ''
+                showNotification(`${modeLabel}Kopyalandı!${saveInfo}${translateInfo}`, text.length > 80 ? text.substring(0, 80) + '...' : text)
+            }
         } else {
-            const msg = captureMode === 'qr' ? 'QR kod veya barkod bulunamadı.' : 'Seçilen alanda okunabilir text yok.'
-            showNotification('✗ Bulunamadı', msg)
+            const messages: Record<string, string> = {
+                'qr': 'QR kod veya barkod bulunamadı.',
+                'table': 'Tablo yapısı algılanamadı.',
+                'handwriting': 'El yazısı okunamadı.',
+                'ocr': 'Seçilen alanda okunabilir metin yok.'
+            }
+            showNotification('Bulunamadı', messages[captureMode])
         }
 
         // Modu sıfırla
@@ -547,7 +728,7 @@ function openSettings() {
 
     settingsOpen = true
     win.setFullScreen(false)
-    win.setSize(700, 800)
+    win.setSize(600, 750)
     win.center()
     win.show()
     win.webContents.send('show-settings')
@@ -566,12 +747,17 @@ ipcMain.handle('get-settings', () => {
         shortcut: currentShortcut,
         autoSave: autoSaveEnabled,
         saveDirectory: saveDirectory,
-        autoStart: isAutostartEnabled()
+        autoStart: isAutostartEnabled(),
+        autoDetectLanguage: autoDetectLanguage,
+        theme: currentTheme,
+        translateEnabled: translateEnabled,
+        translateTarget: translateTarget,
+        showEditWindow: showEditWindow
     }
 })
 
 // IPC: Ayarları kaydet
-ipcMain.on('save-settings', (event, newSettings) => {
+ipcMain.on('save-settings', (_event, newSettings) => {
     // Dil değişti mi?
     if (newSettings.language !== currentLanguage) {
         currentLanguage = newSettings.language
@@ -587,6 +773,11 @@ ipcMain.on('save-settings', (event, newSettings) => {
     // Diğer ayarlar
     autoSaveEnabled = newSettings.autoSave
     saveDirectory = newSettings.saveDirectory
+    autoDetectLanguage = newSettings.autoDetectLanguage ?? false
+    currentTheme = newSettings.theme ?? 'dark'
+    translateEnabled = newSettings.translateEnabled ?? false
+    translateTarget = newSettings.translateTarget ?? 'tr'
+    showEditWindow = newSettings.showEditWindow ?? false
 
     // Autostart değişti mi?
     const currentAutostart = isAutostartEnabled()
@@ -597,8 +788,7 @@ ipcMain.on('save-settings', (event, newSettings) => {
     // Dosyaya kaydet
     saveSettings()
     updateTrayMenu()
-
-    showNotification('✓ Ayarlar Kaydedildi', 'Tüm değişiklikler uygulandı')
+    console.log('Settings saved from GUI')
 })
 
 // IPC: Klasör seç
@@ -615,9 +805,34 @@ ipcMain.handle('choose-directory', async () => {
     return null
 })
 
+// IPC: Klasör aç
+ipcMain.on('open-directory', (_event, directory) => {
+    if (directory && fs.existsSync(directory)) {
+        shell.openPath(directory)
+    }
+})
+
 // IPC: Ayarları kapat
 ipcMain.on('close-settings', () => {
     closeSettings()
+})
+
+// IPC: Düzenleyiciden metin kopyala
+ipcMain.on('editor-copy', (_event, data: { text: string, mode: string }) => {
+    clipboard.writeText(data.text)
+    addToHistory(data.text)
+    saveToFile(data.text, data.mode as 'ocr' | 'qr' | 'table' | 'handwriting')
+    showNotification('Kopyalandı!', data.text.length > 80 ? data.text.substring(0, 80) + '...' : data.text)
+    if (win) {
+        win.hide()
+    }
+})
+
+// IPC: Düzenleyiciyi kapat
+ipcMain.on('editor-close', () => {
+    if (win) {
+        win.hide()
+    }
 })
 
 
@@ -650,6 +865,18 @@ app.whenReady().then(() => {
         startQRCapture()
     })
 
+    // Klavye kısayolu: Ctrl+Shift+T ile Tablo
+    globalShortcut.register('CommandOrControl+Shift+T', () => {
+        console.log('Hotkey pressed: Ctrl+Shift+T (Table)')
+        startTableCapture()
+    })
+
+    // Klavye kısayolu: Ctrl+Shift+H ile El Yazısı
+    globalShortcut.register('CommandOrControl+Shift+H', () => {
+        console.log('Hotkey pressed: Ctrl+Shift+H (Handwriting)')
+        startHandwritingCapture()
+    })
+
     // Tray icon - dosyadan yükle
     try {
         const iconPath = path.join(__dirname, '../public/tray-icon.png')
@@ -675,6 +902,5 @@ app.whenReady().then(() => {
         console.log('Tray oluşturulamadı:', e)
     }
 
-    showNotification('Screen OCR Hazır', 'Ctrl+Shift+O ile ekran yakala')
     console.log('=== App ready ===')
 })
