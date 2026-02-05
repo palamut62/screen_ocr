@@ -7,6 +7,7 @@
     "dev": "vite",
     "start": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:linux": "tsc && vite build && electron-builder --linux",
     "preview": "vite preview"
   },
   "keywords": [
@@ -17,6 +18,52 @@
   ],
   "author": "Aras",
   "license": "MIT",
+  "build": {
+    "appId": "com.aras.screen-ocr",
+    "productName": "Screen OCR",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "dist/index.html",
+      "dist/assets/**/*",
+      "dist/*.png",
+      "!dist/linux-unpacked",
+      "!dist/*.AppImage",
+      "!dist/*.deb",
+      "!dist/*.snap"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm",
+        "snap"
+      ],
+      "executableName": "screen-ocr",
+      "icon": "build/icons",
+      "category": "Utility",
+      "maintainer": "Aras",
+      "synopsis": "Screen OCR - Capture and extract text from screen",
+      "description": "A powerful screen OCR application that captures screen regions and extracts text using Tesseract OCR. Supports multiple languages, table extraction, handwriting recognition, and QR/barcode reading.",
+      "desktop": {
+        "Name": "Screen OCR",
+        "Comment": "Capture and extract text from screen",
+        "Categories": "Utility;Graphics;Scanning;OCR;",
+        "Keywords": "ocr;screen;capture;text;tesseract;",
+        "StartupWMClass": "screen-ocr",
+        "StartupNotify": "true"
+      }
+    },
+    "extraResources": [
+      {
+        "from": "public/tray-icon.png",
+        "to": "tray-icon.png"
+      }
+    ]
+  },
   "devDependencies": {
     "@types/node": "^20.11.17",
     "@types/react": "^18.2.55",

@@ -13,6 +13,23 @@ Instantly capture any part of your screen, extract text, scan QR codes, recogniz
 
 ![Screen OCR Screenshot](public/screenshoot.png)
 
+## Linux Setup
+
+### Prerequisites
+The application requires the following system tools to be installed for full functionality:
+- **Tesseract OCR**: `sudo apt install tesseract-ocr` (and language packs like `tesseract-ocr-tur`)
+- **ZBar**: `sudo apt install zbar-tools` (for QR/Barcode reading)
+- **Scrot/ImageMagick**: `sudo apt install scrot imagemagick` (for advanced screen capture and image processing)
+
+### Installation
+You can build the application for Linux using:
+```bash
+npm run build:linux
+```
+This will generate `AppImage`, `deb`, `rpm`, and `snap` packages in the `dist` directory.
+- **AppImage**: Simply make it executable and run.
+- **Deb**: Install using `sudo dpkg -i screen-ocr_*.deb`.
+
 ## Features
 
 - **Screen Capture & OCR**: Select any area on your screen to extract text

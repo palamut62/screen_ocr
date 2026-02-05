@@ -15,11 +15,13 @@ function showNotification(title: string, body: string) {
 
 // The built directory structure
 process.env.DIST = path.join(__dirname, '../dist')
-process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(__dirname, '../public')
+// Development/Production ortamını belirle (app.isPackaged henüz kullanılamaz)
+const isDev = !!(process.env.VITE_DEV_SERVER_URL || process.env.npm_lifecycle_event === 'dev')
+process.env.VITE_PUBLIC = isDev ? path.join(__dirname, '../public') : process.env.DIST
 
-// Ayarlar dosyası
-const configDir = path.join(process.env.HOME || '', '.config', 'screen-ocr')
-const configFile = path.join(configDir, 'settings.json')
+// Ayarlar dosyası - Electron standart yollarını kullan
+const getConfigDir = () => path.join(app.getPath('userData'), 'settings')
+const getConfigFile = () => path.join(getConfigDir(), 'settings.json')
 
 interface AppSettings {
     language: string
@@ -40,7 +42,7 @@ const defaultSettings: AppSettings = {
     uiLanguage: 'system',
     shortcut: 'CommandOrControl+Shift+O',
     autoSave: false,
-    saveDirectory: path.join(process.env.HOME || '', 'OCR-Sonuclari'),
+    saveDirectory: path.join(app.getPath('home'), 'OCR-Sonuclari'),
     showMagnifier: true,
     autoDetectLanguage: false,
     theme: 'dark',
@@ -51,6 +53,7 @@ const defaultSettings: AppSettings = {
 
 // Ayarları yükle
 function loadSettings(): AppSettings {
+    const configFile = getConfigFile()
     try {
         if (fs.existsSync(configFile)) {
             const data = fs.readFileSync(configFile, 'utf-8')
@@ -65,6 +68,8 @@ function loadSettings(): AppSettings {
 
 // Ayarları kaydet
 function saveSettings() {
+    const configDir = getConfigDir()
+    const configFile = getConfigFile()
     try {
         if (!fs.existsSync(configDir)) {
             fs.mkdirSync(configDir, { recursive: true })
@@ -99,11 +104,34 @@ interface HistoryItem {
     timestamp: Date
     preview: string // İlk 30 karakter
 }
-const ocrHistory: HistoryItem[] = []
+let ocrHistory: HistoryItem[] = []
 const MAX_HISTORY = 10
+
+// Geçmişi yükle
+const historyFile = path.join(app.getPath('userData'), 'history.json')
+function loadHistory() {
+    try {
+        if (fs.existsSync(historyFile)) {
+            const data = fs.readFileSync(historyFile, 'utf-8')
+            ocrHistory = JSON.parse(data)
+        }
+    } catch (e) {
+        console.log('Geçmiş yüklenemedi')
+    }
+}
+
+// Geçmişi kaydet
+function saveHistory() {
+    try {
+        fs.writeFileSync(historyFile, JSON.stringify(ocrHistory, null, 2))
+    } catch (e) {
+        console.log('Geçmiş kaydedilemedi')
+    }
+}
 
 // Ayarları yükle
 const settings = loadSettings()
+loadHistory()
 let currentLanguage = settings.language
 let uiLanguage = settings.uiLanguage || 'system'
 let currentShortcut = settings.shortcut
@@ -222,72 +250,185 @@ function detectLanguage(imagePath: string): string {
 // Tablo algılama fonksiyonu (TSV -> Markdown)
 function extractTable(imagePath: string): string | null {
     try {
-        // Tesseract TSV çıktısı al
-        const result = execSync(`tesseract "${imagePath}" stdout -l ${currentLanguage} --psm 6 tsv 2>/dev/null`, { timeout: 30000 })
-        const tsvData = result.toString().trim()
+        // Tesseract TSV çıktısı al - PSM 4 (variable-size column) tablo için daha uygun
+        // PSM 6 düz metin için, PSM 4 değişken boyutlu sütunlar için
+        console.log('extractTable: Starting with language:', currentLanguage)
 
-        if (!tsvData) return null
+        let result: Buffer
+        try {
+            // Önce PSM 4 dene (variable-size text in a single column)
+            result = execSync(`tesseract "${imagePath}" stdout -l ${currentLanguage} --psm 4 tsv`, { timeout: 30000 })
+        } catch (psmError) {
+            console.log('PSM 4 failed, trying PSM 6:', psmError)
+            // PSM 4 başarısız olursa PSM 6 dene
+            result = execSync(`tesseract "${imagePath}" stdout -l ${currentLanguage} --psm 6 tsv`, { timeout: 30000 })
+        }
+
+        const tsvData = result.toString().trim()
+        console.log('extractTable: TSV data length:', tsvData.length)
+        console.log('extractTable: TSV preview:', tsvData.substring(0, 500))
+
+        if (!tsvData) {
+            console.log('extractTable: No TSV data returned')
+            return null
+        }
 
         const lines = tsvData.split('\n')
-        if (lines.length < 2) return null
+        console.log('extractTable: Total lines:', lines.length)
 
-        // TSV parse et
-        const rows: string[][] = []
-        let currentRow: { text: string, left: number }[] = []
-        let lastBlockNum = -1
-        let lastLineNum = -1
+        if (lines.length < 2) {
+            console.log('extractTable: Not enough lines (need at least 2)')
+            return null
+        }
+
+        // TSV parse et - Y koordinatına göre satırları grupla
+        const words: { text: string, left: number, top: number, height: number, lineNum: number, blockNum: number }[] = []
 
         for (let i = 1; i < lines.length; i++) { // Skip header
             const cols = lines[i].split('\t')
             if (cols.length < 12) continue
 
+            const conf = parseInt(cols[10]) // confidence
+            if (conf < 0) continue // -1 confidence means empty/invalid
+
             const blockNum = parseInt(cols[2])
             const lineNum = parseInt(cols[4])
             const left = parseInt(cols[6])
+            const top = parseInt(cols[7])
+            const height = parseInt(cols[9])
             const text = cols[11]?.trim()
 
-            if (!text || text === '') continue
+            if (!text || text === '' || isNaN(left) || isNaN(top)) continue
 
-            // Yeni satır mı?
-            if (blockNum !== lastBlockNum || lineNum !== lastLineNum) {
+            words.push({ text, left, top, height, lineNum, blockNum })
+        }
+
+        console.log('extractTable: Valid words found:', words.length)
+
+        if (words.length === 0) {
+            console.log('extractTable: No valid words found')
+            return null
+        }
+
+        // Y koordinatına göre satırları grupla (tolerans: ortalama yüksekliğin yarısı)
+        const avgHeight = words.reduce((sum, w) => sum + w.height, 0) / words.length
+        const rowTolerance = avgHeight * 0.6
+
+        // Kelimeleri Y koordinatına göre sırala
+        words.sort((a, b) => a.top - b.top)
+
+        const rows: { text: string, left: number }[][] = []
+        let currentRow: { text: string, left: number }[] = []
+        let currentRowTop = words[0].top
+
+        for (const word of words) {
+            // Yeni satır mı? (Y koordinatı toleranstan fazla farklıysa)
+            if (Math.abs(word.top - currentRowTop) > rowTolerance) {
                 if (currentRow.length > 0) {
                     // Sırala ve ekle
                     currentRow.sort((a, b) => a.left - b.left)
-                    rows.push(currentRow.map(c => c.text))
+                    rows.push(currentRow)
                 }
                 currentRow = []
-                lastBlockNum = blockNum
-                lastLineNum = lineNum
+                currentRowTop = word.top
             }
 
-            currentRow.push({ text, left })
+            currentRow.push({ text: word.text, left: word.left })
         }
 
         // Son satırı ekle
         if (currentRow.length > 0) {
             currentRow.sort((a, b) => a.left - b.left)
-            rows.push(currentRow.map(c => c.text))
+            rows.push(currentRow)
         }
 
-        if (rows.length === 0) return null
+        console.log('extractTable: Rows detected:', rows.length)
 
-        // Markdown tablosuna çevir
-        const maxCols = Math.max(...rows.map(r => r.length))
+        if (rows.length === 0) {
+            console.log('extractTable: No rows formed')
+            return null
+        }
 
-        // Sütunları eşitle
-        const normalizedRows = rows.map(row => {
-            while (row.length < maxCols) row.push('')
-            return row
+        // X koordinatlarına göre sütunları belirle
+        // Tüm kelimelerin X koordinatlarını topla ve kümele
+        const allLeftPositions = words.map(w => w.left).sort((a, b) => a - b)
+
+        // Sütun pozisyonlarını belirle (X koordinatları arasındaki boşluklara göre)
+        const columnPositions: number[] = []
+        const minColGap = avgHeight * 1.5 // Minimum sütun aralığı
+
+        let lastPos = allLeftPositions[0]
+        columnPositions.push(lastPos)
+
+        for (const pos of allLeftPositions) {
+            if (pos - lastPos > minColGap) {
+                columnPositions.push(pos)
+            }
+            lastPos = pos
+        }
+
+        // Her satırdaki kelimeleri sütunlara yerleştir
+        const tableRows: string[][] = rows.map(row => {
+            const cells: string[] = new Array(Math.max(columnPositions.length, row.length)).fill('')
+
+            for (const word of row) {
+                // En yakın sütunu bul
+                let bestCol = 0
+                let bestDist = Math.abs(word.left - columnPositions[0])
+
+                for (let c = 1; c < columnPositions.length; c++) {
+                    const dist = Math.abs(word.left - columnPositions[c])
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        bestCol = c
+                    }
+                }
+
+                // Hücreye ekle (varsa boşlukla ayır)
+                if (cells[bestCol]) {
+                    cells[bestCol] += ' ' + word.text
+                } else {
+                    cells[bestCol] = word.text
+                }
+            }
+
+            return cells
         })
 
-        // Markdown oluştur
-        let markdown = '| ' + normalizedRows[0].join(' | ') + ' |\n'
-        markdown += '| ' + normalizedRows[0].map(() => '---').join(' | ') + ' |\n'
+        // Boş sütunları temizle
+        const maxCols = Math.max(...tableRows.map(r => r.length))
+        const normalizedRows = tableRows.map(row => {
+            while (row.length < maxCols) row.push('')
+            return row.slice(0, maxCols)
+        })
 
-        for (let i = 1; i < normalizedRows.length; i++) {
-            markdown += '| ' + normalizedRows[i].join(' | ') + ' |\n'
+        // Tamamen boş sütunları kaldır
+        const nonEmptyColIndices: number[] = []
+        for (let c = 0; c < maxCols; c++) {
+            const hasContent = normalizedRows.some(row => row[c] && row[c].trim() !== '')
+            if (hasContent) nonEmptyColIndices.push(c)
         }
 
+        const cleanedRows = normalizedRows.map(row =>
+            nonEmptyColIndices.map(c => row[c] || '')
+        )
+
+        if (cleanedRows.length === 0 || cleanedRows[0].length === 0) {
+            console.log('extractTable: No valid table structure')
+            return null
+        }
+
+        console.log('extractTable: Final table size:', cleanedRows.length, 'x', cleanedRows[0].length)
+
+        // Markdown oluştur
+        let markdown = '| ' + cleanedRows[0].join(' | ') + ' |\n'
+        markdown += '| ' + cleanedRows[0].map(() => '---').join(' | ') + ' |\n'
+
+        for (let i = 1; i < cleanedRows.length; i++) {
+            markdown += '| ' + cleanedRows[i].join(' | ') + ' |\n'
+        }
+
+        console.log('extractTable: Markdown generated successfully')
         return markdown.trim()
     } catch (e) {
         console.log('Table extraction failed:', e)
@@ -330,14 +471,16 @@ function startHandwritingCapture() {
 }
 
 // Autostart yönetimi
-const autostartDir = path.join(process.env.HOME || '', '.config/autostart')
-const autostartFile = path.join(autostartDir, 'screen-ocr.desktop')
+const getAutostartDir = () => path.join(app.getPath('home'), '.config/autostart')
+const getAutostartFile = () => path.join(getAutostartDir(), 'screen-ocr.desktop')
 
 function isAutostartEnabled(): boolean {
-    return fs.existsSync(autostartFile)
+    return fs.existsSync(getAutostartFile())
 }
 
 function setAutostart(enabled: boolean) {
+    const autostartDir = getAutostartDir()
+    const autostartFile = getAutostartFile()
     if (enabled) {
         // Autostart klasörünü oluştur
         if (!fs.existsSync(autostartDir)) {
@@ -349,14 +492,19 @@ function setAutostart(enabled: boolean) {
             ? process.execPath
             : `${process.execPath} ${path.join(__dirname, '..')}`
 
+        // İkon yolu - paketlenmiş uygulamada resourcesPath, development'ta public
+        const iconPath = app.isPackaged
+            ? path.join(process.resourcesPath, 'tray-icon.png')
+            : path.join(__dirname, '../public/tray-icon.png')
+
         const desktopEntry = `[Desktop Entry]
 Type=Application
 Name=Screen OCR
 Comment=Extract text from screen
 Exec=${appPath}
-Icon=${path.join(__dirname, '../public/tray-icon.png')}
+Icon=${iconPath}
 Terminal=false
-Categories=Utility;
+Categories=Utility;Graphics;Scanning;OCR;
 StartupNotify=false
 X-GNOME-Autostart-enabled=true
 `
@@ -382,6 +530,7 @@ function addToHistory(text: string) {
     if (ocrHistory.length > MAX_HISTORY) {
         ocrHistory.pop() // Eski olanı sil
     }
+    saveHistory() // Kaydet
     updateTrayMenu() // Menüyü güncelle
 }
 
@@ -456,7 +605,7 @@ function updateTrayMenu() {
     // Geçmiş menüsü - alt menü olarak
     if (ocrHistory.length > 0) {
         const historySubmenu: Electron.MenuItemConstructorOptions[] = ocrHistory.map((item) => ({
-            label: `  ${item.preview}`,
+            label: `📋 ${item.preview}`,
             sublabel: new Date(item.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
             click: () => {
                 clipboard.writeText(item.text)
@@ -530,7 +679,7 @@ function createWindow() {
 
 // Harici araç ile ekran yakala (Linux'ta daha güvenilir)
 function captureWithExternalTool(): Electron.NativeImage | null {
-    const tmpFile = '/tmp/screen-ocr-capture.png'
+    const tmpFile = path.join(app.getPath('temp'), 'screen-ocr-capture.png')
 
     // Mevcut dosyayı sil
     try { fs.unlinkSync(tmpFile) } catch { }
@@ -654,8 +803,8 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
         console.log('Image cropped, buffer size:', imageBuffer.length)
 
         // Geçici dosyaya kaydet
-        const tmpImage = '/tmp/ocr-selection.png'
-        const tmpOutput = '/tmp/ocr-output'
+        const tmpImage = path.join(app.getPath('temp'), 'ocr-selection.png')
+        const tmpOutput = path.join(app.getPath('temp'), 'ocr-output')
         fs.writeFileSync(tmpImage, imageBuffer)
 
         let text = ''
@@ -681,7 +830,7 @@ ipcMain.on('selection-complete', async (_event, bounds: { x: number, y: number, 
             console.log('Trying handwriting recognition...')
             try {
                 // Önce görüntüyü ön işleme tabi tut (imagemagick ile kontrast artır)
-                const processedImage = '/tmp/ocr-handwriting-processed.png'
+                const processedImage = path.join(app.getPath('temp'), 'ocr-handwriting-processed.png')
                 try {
                     execSync(`convert "${tmpImage}" -colorspace Gray -contrast-stretch 0.1x0.1% -sharpen 0x1 "${processedImage}" 2>/dev/null`, { timeout: 5000 })
                 } catch {
@@ -950,8 +1099,11 @@ app.whenReady().then(() => {
 
     // Tray icon - dosyadan yükle
     try {
-        const iconPath = path.join(__dirname, '../public/tray-icon.png')
-        console.log('Tray icon path:', iconPath)
+        // Development ve production için farklı yollar
+        const devIconPath = path.join(__dirname, '../public/tray-icon.png')
+        const prodIconPath = path.join(process.resourcesPath, 'tray-icon.png')
+        const iconPath = app.isPackaged ? prodIconPath : devIconPath
+        console.log('Tray icon path:', iconPath, 'isPackaged:', app.isPackaged)
 
         let trayIcon: Electron.NativeImage
 

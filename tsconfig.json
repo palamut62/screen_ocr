@@ -20,10 +20,14 @@
         "strict": true,
         "noUnusedLocals": true,
         "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
+        /* Electron types */
+        "types": ["node"]
     },
     "include": [
-        "src",
+        "src"
+    ],
+    "exclude": [
         "electron"
     ]
 }
